@@ -1,0 +1,256 @@
+/*
+Project:      screenSpaceRealTime
+Creator:      Kan
+Date Create:  30May2020
+Last Update:  11FEB2022
+
+28SEP2020 ** Fix fov bug **
+01JUL2021 ** add UI add SS for hypermesh **
+11FEB2022 ** add Cam list **
+*/
+
+global string $camslist;
+
+
+global proc screenSpaceRealTime()
+{
+
+    $camName = getCam();
+    string $dumpList[] = `ls -sl`;
+    string $locSel = $dumpList[0];
+	int $f;
+
+    // Find the frame range
+    float $fs = `playbackOptions -q -min`;
+    float $fe = `playbackOptions -q -max`;
+    
+    //If FOV has key. Need to get FOV all frame.
+    float $checkFOVKey[] = `keyframe -attribute ($camName+".focalLength") -q`;
+    
+    if ($checkFOVKey[0] == 0 && !`objExists ("Screenspace_FOV_NODE")`)
+    {
+		
+		shadingNode -asUtility -name "Screenspace_FOV_NODE" floatMath;
+
+        for ($f=$fs;$f<=$fe;$f++)
+        {
+            currentTime $f;
+            float $hfv = `camera -q -hfv $camName`;
+            float $vfv = `camera -q -vfv $camName`;
+            setAttr ("Screenspace_FOV_NODE._fa") $hfv;
+            setAttr ("Screenspace_FOV_NODE._fb") $vfv;
+            setKeyframe  ("Screenspace_FOV_NODE._fa");
+            setKeyframe  ("Screenspace_FOV_NODE._fb");
+        }
+    }
+    else if (`objExists ("Screenspace_FOV_NODE")`)
+    {
+        float $hfv = `camera -q -hfv $camName`;
+        float $vfv = `camera -q -vfv $camName`;
+        setAttr ("Screenspace_FOV_NODE._fa") $hfv;
+        setAttr ("Screenspace_FOV_NODE._fb") $vfv;
+    }
+
+
+    // Create Node to Multiply Obj Matrix and camWorldInverseMatrix
+
+
+    if (!`objExists ($locSel+"_Screenspace_Multiply_Mat")`)
+    {
+        shadingNode -asUtility -name ($locSel+"_Screenspace_Multiply_Mat") multMatrix;
+        connectAttr -force ($locSel+".matrix") ($locSel+"_Screenspace_Multiply_Mat.matrixIn[0]");
+        connectAttr -force ($camName+".worldInverseMatrix[0]") ($locSel+"_Screenspace_Multiply_Mat.matrixIn[1]");
+    
+        // Create Node to decompose only translate
+        shadingNode -asUtility -name ($locSel+"_Screenspace_deTranslate") decomposeMatrix;
+        connectAttr -f ($locSel+"_Screenspace_Multiply_Mat.matrixSum") ($locSel+"_Screenspace_deTranslate.inputMatrix");
+    
+        // Create MathNode to adjust the point's position for the camera perspective
+        //// X_axis
+        shadingNode -asUtility -name ($locSel+"_Screenspace_adjustPos_PanX") floatMath;
+        expression -string ($locSel+"_Screenspace_adjustPos_PanX.floatA=(("+$locSel+"_Screenspace_deTranslate.outputTranslateX/(-"+$locSel+"_Screenspace_deTranslate.outputTranslateZ))/tand(Screenspace_FOV_NODE.floatA/2))/2.0+.5") -name ($locSel+"_adjustPos_PanX_Expression") -object ($locSel+"_Screenspace_adjustPos_PanX") -ae 1 -uc all;
+    
+        shadingNode -asUtility -name ($locSel+"_Screenspace_PanX_Node") floatMath;
+        expression -string ($locSel+"_Screenspace_PanX_Node.floatA=(0.5-"+$locSel+"_Screenspace_adjustPos_PanX.floatA)*-1*"+$camName+".horizontalFilmAperture") -name ($locSel+"_PanX_Node_Expression") -object ($locSel+"_Screenspace_PanX_Node") -ae 1 -uc all;
+    
+        //Y_axis
+        shadingNode -asUtility -name ($locSel+"_Screenspace_adjustPos_PanY") floatMath;
+        expression -string ($locSel+"_Screenspace_adjustPos_PanY.floatA=(("+$locSel+"_Screenspace_deTranslate.outputTranslateY/(-"+$locSel+"_Screenspace_deTranslate.outputTranslateZ))/tand(Screenspace_FOV_NODE.floatB/2))/2.0+.5") -name ($locSel+"_adjustPos_PanY_Expression") -object ($locSel+"_Screenspace_adjustPos_PanY") -ae 1 -uc all;
+
+
+        shadingNode -asUtility -name ($locSel+"_Screenspace_PanY_Node") floatMath;
+        expression -string ($locSel+"_Screenspace_PanY_Node.floatA=(0.5-"+$locSel+"_Screenspace_adjustPos_PanY.floatA)*-1*"+$camName+".verticalFilmAperture") -name ($locSel+"_PanY_Node_Expression") -object ($locSel+"_Screenspace_PanY_Node") -ae 1 -uc all;
+
+
+        if( `objExists ("PanX")`&&`objExists ("PanY")`)
+        {
+            delete ("PanX");
+            delete ("PanY");
+        }
+        expression -s ($camName+".horizontalPan="+$locSel+"_Screenspace_PanX_Node.floatA") -n ("PanX") -o ($camName) -ae 1 -uc all ;
+        expression -s ($camName+".verticalPan="+$locSel+"_Screenspace_PanY_Node.floatA") -n ("PanY") -o ($camName) -ae 1 -uc all ;
+    }
+    else
+    {                                                             
+        // connect PanX&Y_Node to camera pan
+        if( `objExists ("PanX")`&&`objExists ("PanY")`)
+        {
+            delete ("PanX");
+            delete ("PanY");
+        }
+        expression -s ($camName+".horizontalPan="+$locSel+"_Screenspace_PanX_Node.floatA") -n ("PanX") -o ($camName) -ae 1 -uc all ;
+        expression -s ($camName+".verticalPan="+$locSel+"_Screenspace_PanY_Node.floatA") -n ("PanY") -o ($camName) -ae 1 -uc all ;
+    }
+}
+
+global proc screenSpaceRealTimeHyperMesh()
+{
+    $camName = getCam();
+
+    string $dumpList[] = `ls -sl`;
+    string $locSel = $dumpList[0];
+	int $f;
+
+    // Find the frame range
+    float $fs = `playbackOptions -q -min`;
+    float $fe = `playbackOptions -q -max`;
+    
+    //If FOV has key. Need to get FOV all frame.
+    float $checkFOVKey[] = `keyframe -attribute ($camName+".focalLength") -q`;
+    
+    if ($checkFOVKey[0] == 0 && !`objExists ("Screenspace_FOV_NODE")`)
+    {
+		
+		shadingNode -asUtility -name "Screenspace_FOV_NODE" floatMath;
+
+        for ($f=$fs;$f<=$fe;$f++)
+        {
+            currentTime $f;
+            float $hfv = `camera -q -hfv $camName`;
+            float $vfv = `camera -q -vfv $camName`;
+            setAttr ("Screenspace_FOV_NODE._fa") $hfv;
+            setAttr ("Screenspace_FOV_NODE._fb") $vfv;
+            setKeyframe  ("Screenspace_FOV_NODE._fa");
+            setKeyframe  ("Screenspace_FOV_NODE._fb");
+        }
+    }
+    else if (`objExists ("Screenspace_FOV_NODE")`)
+    {
+        float $hfv = `camera -q -hfv $camName`;
+        float $vfv = `camera -q -vfv $camName`;
+        setAttr ("Screenspace_FOV_NODE._fa") $hfv;
+        setAttr ("Screenspace_FOV_NODE._fb") $vfv;
+    }
+
+
+    // Create Node to Multiply Obj Matrix and camWorldInverseMatrix
+
+
+    if (!`objExists ($locSel+"_Screenspace_Multiply_Mat")`)
+    {
+        shadingNode -asUtility -name ($locSel+"_Screenspace_Multiply_Mat") multMatrix;
+        connectAttr -force ($locSel+".parentMatrix") ($locSel+"_Screenspace_Multiply_Mat.matrixIn[0]");
+        connectAttr -force ($camName+".worldInverseMatrix[0]") ($locSel+"_Screenspace_Multiply_Mat.matrixIn[1]");
+    
+        // Create Node to decompose only translate
+        shadingNode -asUtility -name ($locSel+"_Screenspace_deTranslate") decomposeMatrix;
+        connectAttr -f ($locSel+"_Screenspace_Multiply_Mat.matrixSum") ($locSel+"_Screenspace_deTranslate.inputMatrix");
+    
+        // Create MathNode to adjust the point's position for the camera perspective
+        //// X_axis
+        shadingNode -asUtility -name ($locSel+"_Screenspace_adjustPos_PanX") floatMath;
+        expression -string ($locSel+"_Screenspace_adjustPos_PanX.floatA=(("+$locSel+"_Screenspace_deTranslate.outputTranslateX/(-"+$locSel+"_Screenspace_deTranslate.outputTranslateZ))/tand(Screenspace_FOV_NODE.floatA/2))/2.0+.5") -name ($locSel+"_adjustPos_PanX_Expression") -object ($locSel+"_Screenspace_adjustPos_PanX") -ae 1 -uc all;
+    
+        shadingNode -asUtility -name ($locSel+"_Screenspace_PanX_Node") floatMath;
+        expression -string ($locSel+"_Screenspace_PanX_Node.floatA=(0.5-"+$locSel+"_Screenspace_adjustPos_PanX.floatA)*-1*"+$camName+".horizontalFilmAperture") -name ($locSel+"_PanX_Node_Expression") -object ($locSel+"_Screenspace_PanX_Node") -ae 1 -uc all;
+    
+        //Y_axis
+        shadingNode -asUtility -name ($locSel+"_Screenspace_adjustPos_PanY") floatMath;
+        expression -string ($locSel+"_Screenspace_adjustPos_PanY.floatA=(("+$locSel+"_Screenspace_deTranslate.outputTranslateY/(-"+$locSel+"_Screenspace_deTranslate.outputTranslateZ))/tand(Screenspace_FOV_NODE.floatB/2))/2.0+.5") -name ($locSel+"_adjustPos_PanY_Expression") -object ($locSel+"_Screenspace_adjustPos_PanY") -ae 1 -uc all;
+
+
+        shadingNode -asUtility -name ($locSel+"_Screenspace_PanY_Node") floatMath;
+        expression -string ($locSel+"_Screenspace_PanY_Node.floatA=(0.5-"+$locSel+"_Screenspace_adjustPos_PanY.floatA)*-1*"+$camName+".verticalFilmAperture") -name ($locSel+"_PanY_Node_Expression") -object ($locSel+"_Screenspace_PanY_Node") -ae 1 -uc all;
+
+
+        if( `objExists ("PanX")`&&`objExists ("PanY")`)
+        {
+            delete ("PanX");
+            delete ("PanY");
+        }
+        expression -s ($camName+".horizontalPan="+$locSel+"_Screenspace_PanX_Node.floatA") -n ("PanX") -o ($camName) -ae 1 -uc all ;
+        expression -s ($camName+".verticalPan="+$locSel+"_Screenspace_PanY_Node.floatA") -n ("PanY") -o ($camName) -ae 1 -uc all ;
+    }
+    else
+    {                                                             
+        // connect PanX&Y_Node to camera pan
+        if( `objExists ("PanX")`&&`objExists ("PanY")`)
+        {
+            delete ("PanX");
+            delete ("PanY");
+        }
+        expression -s ($camName+".horizontalPan="+$locSel+"_Screenspace_PanX_Node.floatA") -n ("PanX") -o ($camName) -ae 1 -uc all ;
+        expression -s ($camName+".verticalPan="+$locSel+"_Screenspace_PanY_Node.floatA") -n ("PanY") -o ($camName) -ae 1 -uc all ;
+    }
+}
+
+
+proc deletenode()
+{
+    delete "*Screenspace*";
+    delete "PanX";
+    delete "PanY";
+}
+
+proc string getCam()
+{
+    global string $camslist;
+    $cam = `optionMenuGrp -q -v cameralist`;
+    return $cam+"Shape";
+}
+
+
+
+proc windowScreenspace()
+{
+    global string $camslist;
+    string $windowSS = "ScreenSpace";
+    string $allCam[] = `listCameras -p`;
+    print($allCam);
+    $win_width = 180;
+    
+    if (`window -exists $windowSS`){
+    		deleteUI $windowSS;
+    }
+    
+    window -title "ScreenSpace"
+           -width $win_width
+           $windowSS;
+           
+    string $camslist = `optionMenuGrp -label "Cams: " -columnAttach 1 "left" 0 -columnWidth2 45 20 cameralist`;
+      for ( $camera in $allCam )
+      {
+        menuItem -label $camera;
+      }
+
+           
+    frameLayout -label "Screenspace"
+                -marginHeight 5
+                -marginWidth 5;
+    rowLayout -numberOfColumns 4;
+           button -label "Rivet"
+                  -width 70
+                  -command screenSpaceRealTime;
+           button -label "HyperMesh" 
+                  -width 70
+                  -command screenSpaceRealTimeHyperMesh;
+           button -label "ClearNode" 
+                  -width 70
+                  -command deletenode;
+
+    setParent ..;
+    setParent ..;
+    showWindow $windowSS;
+}
+
+windowScreenspace();
