@@ -21,3 +21,7 @@
 <img src=".\src\holdout.gif" />
     - You can copy script and paste on hotkey editor and set your comfortable hotkey.
 [Script Here](tools/setHoldoutAll.py)
+
+4. Raycast - use to project locator from camera direction.
+<img src=".\src\raycast.gif" />
+[Script Here](tools/setHoldoutAll.py)

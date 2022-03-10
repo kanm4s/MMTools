@@ -30,10 +30,6 @@ class rayProjection:
         cmds.button( l="Ray to Mesh" , command=self.rayProjection ,width=self.win_width*0.7)
         cmds.setParent( '..' )
         
-        cmds.separator()
-        cmds.text( l='Step2: select rpLoc from ray.' )
-        
-        cmds.button( l="Place joint" , command=self.addJointToRPLoc )
         cmds.showWindow( window )
         
         
@@ -67,7 +63,7 @@ class rayProjection:
                     self.raycal(loc, self.mesh_select)
                     cmds.select(clear=True)
                     
-            cmds.delete( loc+"_aimConstraint1" )
+
             cmds.setAttr( loc+".rotateX" ,0 )
             cmds.setAttr( loc+".rotateY" ,0 )
             cmds.setAttr( loc+".rotateZ" ,0 )
@@ -109,7 +105,7 @@ class rayProjection:
                 cmds.setKeyframe( loc+"_rpLoc.tx" )
                 cmds.setKeyframe( loc+"_rpLoc.ty" )
                 cmds.setKeyframe( loc+"_rpLoc.tz" )
-                
+
             except RuntimeError:
                 loc_cast = cmds.spaceLocator( name=loc+"_rpLoc", relative=True )
                 cmds.setAttr( loc+"_rpLoc.translateX" ,x )
@@ -118,46 +114,9 @@ class rayProjection:
                 cmds.setKeyframe( loc+"_rpLoc.tx" )
                 cmds.setKeyframe( loc+"_rpLoc.ty" )
                 cmds.setKeyframe( loc+"_rpLoc.tz" )
-                cmds.parentConstraint(loc_cast, self.selection)
-                cmds.delete(loc_cast)
-                
+
                 print("Placed locator at "+ str(x),str(y),str(z))
             
-    def merge_mmstage(self, *args):
-    
-        list_all_model = cmds.ls( type="mesh" )
-        
-        for mesh in list_all_model:
-            check_geo = ["gridShape:gridShape","Grid50cmShape:Grid50cmShape","Grid100cmShape:Grid100cmShape","Grid200cm:Grid200cmShape","Grid200cm_20mx20m:Grid200cm_20mx20mShape"]
-            if any( mesh in name for name in check_geo):
-                print("True")
-                list_all_model.remove(mesh)
-        
-        # deselect tracker
-        cmds.select("*Tracker1Shape*")
-        tracker_select = cmds.ls("*Tracker1Shape*")
-        list_all_model.remove(tracker_select[0])
-        
-        # duplicate all mesh and merge together
-        dup_tmp = cmds.duplicate(list_all_model, name="tmpdup")
-        list_all_model = cmds.ls( dup_tmp )
-        cmds.select(list_all_model)
-        merge_mesh = cmds.polyUnite( list_all_model, n='tmp_mesh' )
-        cmds.delete("tmp_mesh", constructionHistory = True)
-        cmds.delete("tmpdup*")
-        
-        return merge_mesh
-
-    def addJointToRPLoc(self, *args):
-        self.listRPloc = cmds.ls( "*_rpLoc" )
-        self.joint_select = cmds.textFieldButtonGrp( 'selJnt', q=True, tx=True )
-        mesh_select = cmds.textFieldButtonGrp( 'selgeo', q=True, tx=True )
-        for loc in self.listRPloc:
-            tmp_joint = cmds.joint( n="Joint_Track_"+loc[-7])
-            cmds.parent(tmp_joint, self.joint_select)
-            cmds.parentConstraint( loc, tmp_joint, weight=1)
-            cmds.select(clear=True)
-
 
 if __name__ == '__main__':
     print("This module for ray projecting to mesh.")
