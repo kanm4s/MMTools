@@ -9,7 +9,7 @@
 
 1. Screen space - center to object (MEL)
 <img src=".\src\ScreenspaceExample.gif" />
-[Script Here](https://github.com/kanm4s/MMTools/blob/82f8d9a4ef4460a4a91befb5835378eca0fb047c/tools/camOffset.py)
+[Script Here](tools/screenSpace.mel)
 
 
 2. Camera offset - offset animation to another cam
