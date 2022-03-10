@@ -7,6 +7,7 @@ Last Update:  11FEB2022
 28SEP2020 ** Fix fov bug **
 01JUL2021 ** add UI add SS for hypermesh **
 11FEB2022 ** add Cam list **
+03MAR2022 ** fix Cam Shape **
 */
 
 global string $camslist;
@@ -205,10 +206,10 @@ proc deletenode()
 proc string getCam()
 {
     global string $camslist;
-    $cam = `optionMenuGrp -q -v cameralist`;
-    return $cam+"Shape";
-}
+    $cam = `optionMenuGrp -q -v cameraShapeList`;
+    return $cam;
 
+}
 
 
 proc windowScreenspace()
@@ -216,6 +217,7 @@ proc windowScreenspace()
     global string $camslist;
     string $windowSS = "ScreenSpace";
     string $allCam[] = `listCameras -p`;
+    string $allCamShape[] = `ls -cameras`;
     print($allCam);
     $win_width = 180;
     
@@ -229,6 +231,11 @@ proc windowScreenspace()
            
     string $camslist = `optionMenuGrp -label "Cams: " -columnAttach 1 "left" 0 -columnWidth2 45 20 cameralist`;
       for ( $camera in $allCam )
+      {
+        menuItem -label $camera;
+      }
+    string $camslist = `optionMenuGrp -label "Shape: " -columnAttach 1 "left" 0 -columnWidth2 45 20 cameraShapeList`;
+      for ( $camera in $allCamShape )
       {
         menuItem -label $camera;
       }
